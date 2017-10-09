@@ -116,7 +116,7 @@ unlink("manifest.R")
 
 In the last few years the R community has done big steps in providing friendly tools to manipulate tables extended by geographical information. The need to display such information in a simple way, coupled with the prescriptions of _tidy data_ summarized by Hadley Wickham (https://www.jstatsoft.org/article/view/v059i10) led to the development of R packages such as [`sf`](https://cran.r-project.org/package=sf) and [`tmap`](https://cran.r-project.org/package=tmap), as well as considerable improvement of the well-known R graphic library, [`ggplot2`](https://cran.r-project.org/package=ggplot2). Moreover, it is a celebrated fact that data has never been more available than today: it is also easier than ever to extract geographical information from OpenStreetMap (OSM) databases thanks to the [`osmdata`](https://cran.r-project.org/package=osmdata) package, while staying in the R ecosystem. This package acts as a smart interface between the user and the dreaded official OSM query language, called Overpass.
 
-With this geographical "holy trinity" in the making at our disposal (even though `tmap` silently makes conversions from `sf` to the older `sp` objects), extracting the administrative boundaries of Brussels, for instance, and plotting them has therefore become not only extremely fast, easy, but also *reproducible*. In fact, when dealing with Geographical Information Systems (GIS) usually one has to worry about the sources of the files he or she is going to manipulate and display. The traditional approach consists then in opening a GIS program, such as QGIS or ArcGIS, and start clicking around one's way through the building of an appropriate map. The following solution, in turn, allows the user _to never quit the R environment_.
+With this geographical "holy trinity" in the making at our disposal (even though `tmap` still silently makes conversions from `sf` to the older `sp` objects), extracting the administrative boundaries of Brussels, for instance, and plotting them has therefore become not only extremely fast, easy, but also *reproducible*. In fact, when dealing with Geographical Information Systems (GIS) usually one has to worry about the sources of the files he or she is going to manipulate and display. The traditional approach consists then in opening a GIS program, such as QGIS or ArcGIS, and start clicking around one's way through the building of an appropriate map. The following solution, in turn, allows the user _to never quit the R environment_.
 
 As an exercise, I'm going to display the boundaries of the municipalities locate in the Belgian region of Brussels-Capital. Despite the workflow is rather linear on paper, some caveats and a critical approach are still necessary, and this is what motivated me to write this blog post. My approach to this matter is certainly not original, and I don't expect to teach anything new to the more experienced R users. On the contrary, real R beginners may struggle in following some of the language shortcuts.
 
@@ -125,6 +125,7 @@ So, let's start.
 ## Extraction of the political boundaries
 
 To identify our region of interest, we must know a few definitions. As we decided to access the OSM database, we must know whatever key and values are the most used by the community. Administrative boundaries are not internationally defined in a unique way, so we must check how specific countries deal with these different levels. The reference webpage is the following: http://wiki.openstreetmap.org/wiki/Tag:boundary%3Dadministrative. We're then able to find out that Belgian municipalities are described by level 8.
+
 ```{r}
 boundaries <- opq(bbox = 'Brussels, Belgium') %>%
   add_osm_feature(key = 'admin_level', value = '8') %>% 
@@ -132,11 +133,13 @@ boundaries <- opq(bbox = 'Brussels, Belgium') %>%
 ```
 
 We can now extract the actual geometrical boundaries from this object...
+
 ```{r}
 municipalities <- boundaries$osm_multipolygons
 ```
 
 ... And quickly display it thanks to the `tmap::qtm()` function.
+
 ```{r}
 qtm(municipalities)
 ```
@@ -145,7 +148,7 @@ qtm(municipalities)
 
 ### A naive strategy 
 
-This seems like a lot of towns, certainly too much for the sole region of Brussels capital! Indeed I queried objects inside some rectangular bounding box of the city, defined by Overpass itself. In an ideal world however, we could filter the 19 relevant commune's names by selecting for instance their postcodes. We know that postcodes inside Brussels region are included between 1000 and 1210.
+This seems like a lot of towns, certainly too much for the sole Brussels-Capital Region! Indeed I queried objects inside some rectangular bounding box of the city, defined by Overpass itself. In an ideal world however, we could filter the 19 relevant commune's names by selecting for instance their postcodes. We know that postcodes inside Brussels Region are included between 1000 and 1210.
 
 ```{r}
 municipalities <- municipalities %>% mutate(addr.postcode = as.character(addr.postcode))
@@ -167,13 +170,13 @@ kable(head(table[, c('name', 'addr.postcode')]))
 First lesson learnt. We easily notice that, as it often happens when scraping online data, information is incomplete, and many postcodes are missing. Since we do trust the geographical information reported by OSM, we therefore need to think of another strategy, independent of whatever other information OSM databases may or may not include. In the first query we specified the number '8', corresponding for Belgium to the administrative level of Municipalities. As regions are identified by number '4', we can rely on that one to select more precisely our boundaries of interest.
 
 ```{r}
-data_regions <- opq(bbox = 'Brussels') %>%
+regions <- opq(bbox = 'Brussels, Belgium') %>%
   add_osm_feature(key = 'admin_level', value = '4') %>% 
   osmdata_sf %>% unique_osmdata
 ```
 
 ```{r}
-bxl_region <- data_regions$osm_multipolygons %>% filter(osm_id == '54094')
+bxl_region <- regions$osm_multipolygons %>% filter(osm_id == '54094')
 qtm(bxl_region)
 ```
 
@@ -183,6 +186,7 @@ Now we have the shape of Brussels-Capital, but how do extract the municipalities
 qtm(municipalities[bxl_region, ]) +
   tm_shape(bxl_region) + tm_borders(col = 'red')
 ```
+
 Unfortunately, it seems that municipalities immediately outside of the Brussels region (whose borders are highlighted in red for clarity) are still included. This is probably due to the inclusion of the lines common to internal and external municipalities, and the entire polygons that includes them.
 
 ### Brute-force solution
@@ -207,7 +211,7 @@ bxl_municipalities_poly <- bxl_municipalities_poly %>% mutate(name = droplevels(
 tm_shape(bxl_municipalities_poly) + tm_polygons(title = 'Municipalities', col = 'name') + tm_layout(legend.outside = TRUE)
 ```
 
-That's it! We can make the map a little prettier and more accurate by projecting to an appropriate CRS, and adding some details. Also, colors could be improved.
+That's it! We can make the map a little prettier and more accurate by projecting it to an appropriate CRS, and adding some details. Also, colors could be improved.
 
 ```{r}
 bxl_municipalities_poly <- st_transform(bxl_municipalities_poly, crs = 3812)
@@ -220,7 +224,7 @@ tm_style_col_blind() +
 
 I'm still not completely satisfied, but with more time and some more experience in data visualization things could be improved. Anyway, it's a good start.
 
-On the next episode we'll see how to deal with a port city: how to take into account the coastline?
+On the next episode we'll see how to deal with a port city: how can we display the coastline?
 
 ## Acknowledgements
 
