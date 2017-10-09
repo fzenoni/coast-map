@@ -67,6 +67,7 @@ if ( is.null(path_to_wd) | !dir.exists(path_to_wd)) {
 # if you don't need a package, remove it from here (commenting is probably not sufficient)
 # tidyverse: see https://blog.rstudio.org/2016/09/15/tidyverse-1-0-0/
 cat("
+library(backports)
 library(dplyr)
 library(knitr)
 library(osmdata)
@@ -189,32 +190,40 @@ qtm(municipalities[bxl_region, ]) +
 
 Unfortunately, it seems that municipalities immediately outside of the Brussels region (whose borders are highlighted in red for clarity) are still included. This is probably due to the inclusion of the lines common to internal and external municipalities, and the entire polygons that includes them.
 
-### Brute-force solution
+### Two options
 
-At this point, there may be a few different options. I decided to go through explicit intersection of polygons.
+At this point, there may be a few different options. At first, I decided to go through explicit intersection of polygons (but we need valid polygons in order to do that, and OSM polygons are invalid more often than not). In both cases, however we're going to project the map on the appropriate CRS (ETRS89 / Belgian Lambert 2008). The output of the intersection partially consists in line strings, as I suspected from the default subset operation. We don't need them for the display, so we identify and exclude them. The following works.
 
 ```{r message=FALSE, warning=FALSE}
+municipalities <- st_transform(municipalities, 3812)
+bxl_region <- st_transform(bxl_region, 3812)
 # Make sure all polygons are valid
 if(!all(st_is_valid(municipalities))) {
   municipalities <- municipalities %>% st_make_valid()
 }
 bxl_municipalities <- st_intersection(municipalities, bxl_region)
+bxl_municipalities_poly <- bxl_municipalities[1:19, ]
+```
+
+But later, I realized that it was also possible to compute a _negative buffer_ from a polygon, which may represent a more compact, if not "softer", option in this case, which I adopt.
+
+```{r}
+neg_buffer <- st_buffer(bxl_region, -100)
+bxl_municipalities_poly <- municipalities[neg_buffer, ]
 ```
 
 ## Final act
 
-The output of the intersection also consists in line strings, as we suspected from the default subset operation. We don't need them for the display, so we identify and exclude them.
+At this point we can make use of one of the two `bxl_municipalities_poly` objects that we computed, as they are identical.
 
 ```{r}
-bxl_municipalities_poly <- bxl_municipalities[1:19, ]
 bxl_municipalities_poly <- bxl_municipalities_poly %>% mutate(name = droplevels(name))
 tm_shape(bxl_municipalities_poly) + tm_polygons(title = 'Municipalities', col = 'name') + tm_layout(legend.outside = TRUE)
 ```
 
-That's it! We can make the map a little prettier and more accurate by projecting it to an appropriate CRS, and adding some details. Also, colors could be improved.
+That's it! We can make the map a little prettier by adding some details. Also, colors could be improved.
 
 ```{r}
-bxl_municipalities_poly <- st_transform(bxl_municipalities_poly, crs = 3812)
 tm_style_col_blind() +
   tm_shape(bxl_municipalities_poly) + tm_polygons(title = 'Brussels Capital Municipalities', border.col = 'grey40', col = 'name', alpha = 0.6) +
   tm_shape(bxl_region) + tm_borders(col = 'grey20', lwd = 2, alpha = 0.8) +
