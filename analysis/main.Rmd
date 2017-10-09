@@ -1,0 +1,227 @@
+---
+title: "A political map of the Brussels-Capital Region in R"
+subtitle: "A reproducible workflow"
+author: "Florian Zenoni"
+date: "October 9, 2017"
+output:
+  html_document:
+    code_folding: show
+    toc: yes
+    toc_float: 
+      collapsed: false
+      smooth_scroll: false
+---
+
+
+```{r, echo=FALSE}
+# CONFIG
+user_name <- "fzenoni" # your Git username (only needed if
+# you want to deploy to GH pages)
+project_name <- "bcr-map" # adapt!
+package_date <- "2017-10-09" # date of the CRAN snapshot that
+# the checkpoint package uses
+```
+
+### GitHub
+
+The code for the herein described process can also be freely downloaded from [https://github.com/`r user_name`/`r project_name`](https://github.com/`r user_name`/`r project_name`). 
+
+```{r include=FALSE}
+detach_all_packages <- function() {
+  basic_packages_blank <-  c("stats",
+                             "graphics",
+                             "grDevices",
+                             "utils",
+                             "datasets",
+                             "methods",
+                             "base")
+  basic_packages <- paste("package:", basic_packages_blank, sep = "")
+
+  package_list <- search()[
+    ifelse(unlist(gregexpr("package:", search())) == 1, TRUE, FALSE)]
+
+  package_list <- setdiff(package_list, basic_packages)
+
+  if (length(package_list) > 0)  for (package in package_list) {
+    detach(package, character.only = TRUE, unload = TRUE)
+    print(paste("package ", package, " detached", sep = ""))
+  }
+}
+
+detach_all_packages()
+
+# this allows multiple persons to use the same RMarkdown
+# without adjusting the working directory by themselves all the time
+source("scripts/csf.R")
+path_to_wd <- csf() # if this - for some reason - does not work, 
+# replace with a hardcoded path, like so: "~/projects/rddj-template/analysis/"
+if ( is.null(path_to_wd) | !dir.exists(path_to_wd)) {
+  print("WARNING: No working directory specified for current user")
+} else {
+  setwd(path_to_wd)
+}
+```
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+# from https://mran.revolutionanalytics.com/web/packages/checkpoint/vignettes/using-checkpoint-with-knitr.html
+# if you don't need a package, remove it from here (commenting is probably not sufficient)
+# tidyverse: see https://blog.rstudio.org/2016/09/15/tidyverse-1-0-0/
+cat("
+library(dplyr)
+library(knitr)
+library(osmdata)
+library(sf)
+library(tmap)",
+file = "manifest.R")
+```
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+# if checkpoint is not yet installed, install it (for people using this
+# system for the first time)
+if (!require(checkpoint)) {
+  if (!require(devtools)) {
+    install.packages("devtools", repos = "http://cran.us.r-project.org")
+    require(devtools)
+  }
+  devtools::install_github("checkpoint",
+                           username = "RevolutionAnalytics",
+                           ref = "v0.3.2", # could be adapted later,
+                           # as of now (beginning of July 2017
+                           # this is the current release on CRAN)
+                           repos = "http://cran.us.r-project.org")
+  require(checkpoint)
+}
+# nolint start
+if (!dir.exists("~/.checkpoint")) {
+  dir.create("~/.checkpoint")
+}
+# nolint end
+# install packages for the specified CRAN snapshot date
+checkpoint(snapshotDate = package_date,
+           project = path_to_wd,
+           verbose = T,
+           scanForPackages = T,
+           use.knitr = F)
+rm(package_date)
+```
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+source("manifest.R")
+unlink("manifest.R")
+# sessionInfo()
+```
+
+
+## Drawing maps with R
+
+In the last few years the R community has done big steps in providing friendly tools to manipulate tables extended by geographical information. The need to display such information in a simple way, coupled with the prescriptions of _tidy data_ summarized by Hadley Wickham (https://www.jstatsoft.org/article/view/v059i10) led to the development of R packages such as `sf` and `tmap`, as well as considerable improvement of the well-known R graphic library, `ggplot2`. Moreover, it is a celebrated fact that data has never been more available than today: it is also easier than ever to extract geographical information from OpenStreetMap (OSM) databases with the `osmdata` package, while staying in the R ecosystem. This package acts as a smart interface between the user and the dreaded official OSM query language, called Overpass.
+
+With this geographical "holy trinity" in the making at our disposal (even though `tmap` silently makes conversions from `sf` to the older `sp` objects), extracting the administrative boundaries of Brussels, for instance, and plotting them has therefore become not only extremely fast, easy, but also *reproducible*. In fact, when dealing with Geographical Information Systems (GIS) usually one has to worry about the sources of the files he or she is going to manipulate and display. The traditional approach consists then in opening a GIS program, such as QGIS or ArcGIS, and start clicking around one's way through the building of an appropriate map. The following solution, in turn, allows the user _to never quit the R environment_.
+
+As an exercise, I'm going to display the boundaries of the municipalities locate in the Belgian region of Brussels-Capital. Despite the workflow is rather linear on paper, some caveats and a critical approach are still necessary, and this is what motivated me to write this blog post. My approach to this matter is certainly not original, and I don't expect to teach anything new to the more experienced R users. On the contrary, real R beginners may struggle in following some of the language shortcuts.
+
+So, let's start.
+
+## Extraction of the political boundaries
+
+To identify our region of interest, we must know a few definitions. As we decided to access the OSM database, we must know whatever key and values are the most used by the community. Administrative boundaries are not internationally defined in a unique way, so we must check how specific countries deal with these different levels. The reference webpage is the following: http://wiki.openstreetmap.org/wiki/Tag:boundary%3Dadministrative. We're then able to find out that Belgian municipalities are described by level 8.
+```{r}
+boundaries <- opq(bbox = 'Brussels, Belgium') %>%
+  add_osm_feature(key = 'admin_level', value = '8') %>% 
+  osmdata_sf %>% unique_osmdata
+```
+
+We can now extract the actual geometrical boundaries from this object...
+```{r}
+municipalities <- boundaries$osm_multipolygons
+```
+
+... And quickly display it thanks to the `tmap::qtm()` function.
+```{r}
+qtm(municipalities)
+```
+
+## Filtering the municipalities
+
+### A naive strategy 
+
+This seems like a lot of towns, certainly too much for the sole region of Brussels capital! Indeed I queried objects inside some rectangular bounding box of the city, defined by Overpass itself. In an ideal world however, we could filter the 19 relevant commune's names by selecting for instance their postcodes. We know that postcodes inside Brussels region are included between 1000 and 1210.
+
+```{r}
+municipalities <- municipalities %>% mutate(addr.postcode = as.character(addr.postcode))
+municipalities <- municipalities %>% mutate(addr.postcode = as.numeric(addr.postcode))
+filtered_bxl <- municipalities %>% filter(addr.postcode >= 1000 & addr.postcode <= 1210)
+qtm(filtered_bxl)
+```
+
+But this is not good either! Indeed, let's have a look at the original dataset. For the sake of space I'll only show the first few entries.
+
+```{r}
+table <- municipalities
+st_geometry(table) <- NULL
+kable(head(table[, c('name', 'addr.postcode')]))
+```
+
+### Other boundaries to the rescue
+
+First lesson learnt. We easily notice that, as it often happens when scraping online data, information is incomplete, and many postcodes are missing. Since we do trust the geographical information reported by OSM, we therefore need to think of another strategy, independent of whatever other information OSM databases may or may not include. In the first query we specified the number '8', corresponding for Belgium to the administrative level of Municipalities. As regions are identified by number '4', we can rely on that one to select more precisely our boundaries of interest.
+
+```{r}
+data_regions <- opq(bbox = 'Brussels') %>%
+  add_osm_feature(key = 'admin_level', value = '4') %>% 
+  osmdata_sf %>% unique_osmdata
+```
+
+```{r}
+bxl_region <- data_regions$osm_multipolygons %>% filter(osm_id == '54094')
+qtm(bxl_region)
+```
+
+Now we have the shape of Brussels-Capital, but how do extract the municipalities inside of these boundaries? The general, documented way to perform such an operation is trivial.
+
+```{r message=FALSE, warning=FALSE}
+qtm(municipalities[bxl_region, ]) +
+  tm_shape(bxl_region) + tm_borders(col = 'red')
+```
+Unfortunately, it seems that municipalities immediately outside of the Brussels region (whose borders are highlighted in red for clarity) are still included. This is probably due to the inclusion of the lines touching internal and external municipalities, and the entire polygons that includes them
+
+### Brute-force solution
+
+At this point, there may be a few different options. I decided to go through explicit intersection of polygons.
+
+```{r message=FALSE, warning=FALSE}
+# Make sure all polygons are valid
+if(!all(st_is_valid(municipalities))) {
+  municipalities <- municipalities %>% st_make_valid()
+}
+bxl_municipalities <- st_intersection(municipalities, bxl_region)
+```
+
+## Final act
+
+The output of the intersection also consists in linestrings, as we suspected from the default subsetting operation. We don't need them for the display, so we identify and exclude them.
+
+```{r}
+bxl_municipalities_poly <- bxl_municipalities[1:19, ]
+bxl_municipalities_poly <- bxl_municipalities_poly %>% mutate(name = droplevels(name))
+tm_shape(bxl_municipalities_poly) + tm_polygons(title = 'Municipalities', col = 'name') + tm_layout(legend.outside = TRUE)
+```
+
+That's it! We can make the map a little prettier and more accurate by projecting to an appropriate CRS, and adding some details. Also, colors could be improved.
+
+```{r}
+bxl_municipalities_poly <- st_transform(bxl_municipalities_poly, crs = 3812)
+tm_style_col_blind() +
+  tm_shape(bxl_municipalities_poly) + tm_polygons(title = 'Brussels Capital Municipalities', border.col = 'grey40', col = 'name', alpha = 0.6) +
+  tm_shape(bxl_region) + tm_borders(col = 'grey20', lwd = 2, alpha = 0.8) +
+  tm_layout(legend.outside = TRUE, frame.double.line = TRUE) +
+  tm_grid(projection = 'longlat', n.x = 5) + tm_scale_bar() + tm_compass(position = c('right', 'top'))
+```
+
+I'm still not completely satisfied, but with more time and some more experience in data visualization things could be improved. Anyway, it's a good start.
+
+On the next episode we'll see how to deal with a port city: how to take into account the coastline?
+
+## Acknoledgements
+
+I would like to thank Timo Grossenbacher (https://timogrossenbacher.ch) for the public release of his "template for bootstrapping reproducible RMarkdown documents for data journalistic purposes". You may clone it from here: https://github.com/grssnbchr/rddj-template.
