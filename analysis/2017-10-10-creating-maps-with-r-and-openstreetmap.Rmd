@@ -1,5 +1,5 @@
 ---
-title: Creating maps with R and OpenStreetMap
+title: Creating maps with R and OpenStreetMap (1)
 author: Florian Zenoni
 date: '2017-10-10'
 categories:
@@ -7,6 +7,9 @@ categories:
   - R
 tags:
   - OpenStreetMap
+  - sf
+  - tmap
+  - osmdata
 slug: creating-maps-with-r-and-openstreetmap
 ---
 
@@ -112,17 +115,17 @@ unlink("manifest.R")
 
 ## Drawing maps with R
 
-In the last few years the R community has done big steps in providing friendly tools to manipulate tables extended by geographical information. The need to display such information in a simple way, coupled with the prescriptions of _tidy data_ summarized by Hadley Wickham (https://www.jstatsoft.org/article/view/v059i10) led to the development of R packages such as [`sf`](https://cran.r-project.org/package=sf) and [`tmap`](https://cran.r-project.org/package=tmap), as well as considerable improvement of the well-known R graphic library, [`ggplot2`](https://cran.r-project.org/package=ggplot2). Moreover, it is a celebrated fact that data has never been more available than today: it is also easier than ever to extract geographical information from OpenStreetMap (OSM) databases thanks to the [`osmdata`](https://cran.r-project.org/package=osmdata) package, while staying in the R ecosystem. This package acts as a smart interface between the user and the dreaded official OSM query language, called Overpass.
+In the last few years the R community has done big steps in providing friendly tools to manipulate tables extended by geographical information. The need to display such information in a simple way, coupled with the prescriptions of _tidy data_ summarized by Hadley Wickham (https://www.jstatsoft.org/article/view/v059i10) led to the development of R packages such as [`sf`](https://cran.r-project.org/package=sf) and [`tmap`](https://cran.r-project.org/package=tmap), as well as considerable improvement of the well-known R graphic library, [`ggplot2`](https://cran.r-project.org/package=ggplot2). Moreover, it is a celebrated fact that data has never been more available than today: thanks to the [`osmdata`](https://cran.r-project.org/package=osmdata) package, it is now also easier than ever to extract geographical information from OpenStreetMap (OSM) databases, while staying in the R ecosystem. This package acts as a smart interface between the user and the dreaded official OSM query language, called Overpass.
 
-With this geographical "holy trinity" in the making at our disposal (even though `tmap` still silently makes conversions from `sf` to the older `sp` objects), extracting the administrative boundaries of Brussels, for instance, and plotting them has therefore become not only extremely fast, easy, but also *reproducible*. In fact, when dealing with Geographical Information Systems (GIS) usually one has to worry about the sources of the files he or she is going to manipulate and display. The traditional approach consists then in opening a GIS program, such as QGIS or ArcGIS, and start clicking around one's way through the building of an appropriate map. The following solution, in turn, allows the user _to never quit the R environment_.
+With this geographical "holy trinity" in the making at our disposal (even though `tmap` still silently makes conversions from `sf` to the older [`sp`](https://cran.r-project.org/package=sp) objects), has therefore allowed beginner users to set-up fast, but also *reproducible* workflows. In fact, when dealing with Geographical Information Systems (GIS) a traditional approach consists in opening a GIS program with a GUI, such as QGIS or ArcGIS, and start clicking around one's way through the building of an appropriate map. The R tools at our disposal, in turn, allow the user to keep full track of his or her actions, maintain this track and share it with other users.
 
-As an exercise, I'm going to display the boundaries of the municipalities locate in the Belgian region of Brussels-Capital. Despite the workflow is rather linear on paper, some caveats and a critical approach are still necessary, and this is what motivated me to write this blog post. My approach to this matter is certainly not original, and I don't expect to teach anything new to the more experienced R users. On the contrary, real R beginners may struggle in following some of the language shortcuts.
+As an exercise, I'm going to display the boundaries of the municipalities located in the Belgian region of Brussels-Capital. Despite the fact that the workflow is rather linear on paper, some _caveats_ and a critical approach are still necessary, and this is what motivated me to write this blog post. My approach to this matter is certainly not original, and I don't expect to teach anything new to the more experienced R users. On the contrary, real R beginners may struggle in following some of the language shortcuts.
 
 So, let's start.
 
 ## Extraction of the political boundaries
 
-To identify our region of interest, we must know a few definitions. As we decided to access the OSM database, we must know whatever key and values are the most used by the community. Administrative boundaries are not internationally defined in a unique way, so we must check how specific countries deal with these different levels. The reference webpage is the following: http://wiki.openstreetmap.org/wiki/Tag:boundary%3Dadministrative. We're then able to find out that Belgian municipalities are described by level 8.
+To identify our region of interest, we must know a few definitions. As we decided to access the OSM database, we must use whatever key and values are the most used by the community. Administrative boundaries are not internationally defined in a unique way, so we must check how specific countries deal with these different levels. The reference webpage is the following: http://wiki.openstreetmap.org/wiki/Tag:boundary%3Dadministrative. We're then able to find out that Belgian municipalities are described by level 8.
 
 ```{r}
 boundaries <- opq(bbox = 'Brussels, Belgium') %>%
@@ -165,7 +168,7 @@ kable(head(table[, c('name', 'addr.postcode')]))
 
 ### Other boundaries to the rescue
 
-First lesson learnt. We easily notice that, as it often happens when scraping online data, information is incomplete, and many postcodes are missing. Since we do trust the geographical information reported by OSM, we therefore need to think of another strategy, independent of whatever other information OSM databases may or may not include. In the first query we specified the number '8', corresponding for Belgium to the administrative level of Municipalities. As regions are identified by number '4', we can rely on that one to select more precisely our boundaries of interest.
+First lesson learnt. We easily notice that, as it often happens when scraping online data, information is incomplete, and many postcodes are missing. Since we do trust the geographical information reported by OSM, we therefore need to think of another strategy, independent of whatever other information OSM databases may or may not include. In the first query we specified the number 8, corresponding for Belgium to the administrative level of Municipalities. As regions are identified by number 4, we can rely on that one to select more precisely our boundaries of interest.
 
 ```{r}
 regions <- opq(bbox = 'Brussels, Belgium') %>%
@@ -189,7 +192,7 @@ Unfortunately, it seems that municipalities immediately outside of the Brussels 
 
 ### Two options
 
-At this point, there may be a few different options. At first, I decided to go through explicit intersection of polygons (but we need valid polygons in order to do that, and OSM polygons are invalid more often than not). In both cases, however we're going to project the map on the appropriate CRS (ETRS89 / Belgian Lambert 2008). The output of the intersection partially consists in line strings, as I suspected from the default subset operation. We don't need them for the display, so we identify and exclude them. The following works.
+At this point, there may be a few different options. At first, I decided to go through explicit intersection of polygons. However, we need valid polygons in order to do that (and OSM polygons are invalid more often than not). In order to fix broken polygons, you will need to link the `sf` package against the _liblwgeom_ library installed for your machine. I've never managed to install this library on Windows, so leave your solution in the comments if you know how to do it! In any case we're going to project the map on the appropriate CRS (ETRS89 / Belgian Lambert 2008). The output of the intersection partially consists in line strings, as I suspected from the default subset operation. We don't need them for the display, so we identify and exclude them. The following works.
 
 ```{r message=FALSE, warning=FALSE}
 municipalities <- st_transform(municipalities, 3812)
@@ -202,7 +205,7 @@ bxl_municipalities <- st_intersection(municipalities, bxl_region)
 bxl_municipalities_poly <- bxl_municipalities[1:19, ]
 ```
 
-But later, I realized that it was also possible to compute a _negative buffer_ from a polygon, which may represent a more compact, if not "softer", option in this case, which I adopt.
+Later however, I realized that it was also possible to compute a _negative buffer_ from a polygon, which may represent a more compact, if not "softer", option in this case, which I adopt.
 
 ```{r}
 neg_buffer <- st_buffer(bxl_region, -100)
