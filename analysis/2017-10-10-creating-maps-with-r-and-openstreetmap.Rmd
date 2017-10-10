@@ -221,19 +221,24 @@ bxl_municipalities_poly <- municipalities[neg_buffer, ]
 At this point we can make use of one of the two `bxl_municipalities_poly` objects that we computed, as they are identical.
 
 ```{r}
-# Drop the municipalities factors excluded from the latest subset operations, or they will appear in the legend.
+# Drop the municipalities factors excluded from the latest subset operations
+# or they will appear in the legend.
 bxl_municipalities_poly <- bxl_municipalities_poly %>% mutate(name = droplevels(name))
-tm_shape(bxl_municipalities_poly) + tm_polygons(title = 'Municipalities', col = 'name') + tm_layout(legend.outside = TRUE)
+tm_shape(bxl_municipalities_poly) +
+  tm_polygons(title = 'Municipalities', col = 'name') +
+  tm_layout(legend.outside = TRUE)
 ```
 
 That's it! We can make the map a little prettier by adding some details. Also, colors could be improved.
 
 ```{r}
 tm_style_col_blind() +
-  tm_shape(bxl_municipalities_poly) + tm_polygons(title = 'Brussels Capital Municipalities', border.col = 'grey40', col = 'name', alpha = 0.6) +
+  tm_shape(bxl_municipalities_poly) +
+  tm_polygons(title = 'Brussels Capital Municipalities', border.col = 'grey40', col = 'name', alpha = 0.6) +
   tm_shape(bxl_region) + tm_borders(col = 'grey20', lwd = 2, alpha = 0.8) +
   tm_layout(legend.outside = TRUE, frame.double.line = TRUE) +
-  tm_grid(projection = 'longlat', n.x = 5) + tm_scale_bar() + tm_compass(position = c('right', 'top'))
+  tm_grid(projection = 'longlat', n.x = 5) + tm_scale_bar() +
+  tm_compass(position = c('right', 'top'))
 ```
 
 I'm still not completely satisfied, but with more time and some more experience in data visualization things could be improved. Anyway, it's a good start.
