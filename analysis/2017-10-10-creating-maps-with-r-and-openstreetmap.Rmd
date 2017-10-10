@@ -152,8 +152,10 @@ qtm(municipalities)
 This seems like a lot of towns, certainly too much for the sole Brussels-Capital Region! Indeed I queried objects inside some rectangular bounding box of the city, defined by Overpass itself. In an ideal world however, we could filter the 19 relevant commune's names by selecting for instance their postcodes. We know that postcodes inside Brussels Region are included between 1000 and 1210.
 
 ```{r}
+# Unfactor addr.postcode column
 municipalities <- municipalities %>% mutate(addr.postcode = as.character(addr.postcode))
 municipalities <- municipalities %>% mutate(addr.postcode = as.numeric(addr.postcode))
+# Filter table
 filtered_bxl <- municipalities %>% filter(addr.postcode >= 1000 & addr.postcode <= 1210)
 qtm(filtered_bxl)
 ```
@@ -162,6 +164,7 @@ But this is not good either! Indeed, let's have a look at the original dataset. 
 
 ```{r}
 table <- municipalities
+# Remove geometry from table
 st_geometry(table) <- NULL
 kable(head(table[, c('name', 'addr.postcode')]))
 ```
@@ -185,7 +188,7 @@ Now we have the shape of Brussels-Capital, but how do extract the municipalities
 
 ```{r message=FALSE, warning=FALSE}
 qtm(municipalities[bxl_region, ]) +
-  tm_shape(bxl_region) + tm_borders(col = 'red')
+  tm_shape(bxl_region) + tm_borders(col = 'red') # Overlay Brussels region borders in red
 ```
 
 Unfortunately, it seems that municipalities immediately outside of the Brussels region (whose borders are highlighted in red for clarity) are still included. This is probably due to the inclusion of the lines common to internal and external municipalities, and the entire polygons that includes them.
@@ -197,18 +200,19 @@ At this point, there may be a few different options. At first, I decided to go t
 ```{r message=FALSE, warning=FALSE}
 municipalities <- st_transform(municipalities, 3812)
 bxl_region <- st_transform(bxl_region, 3812)
-# Make sure all polygons are valid
+# Fix the polygons before the intersection, or it will fail
 if(!all(st_is_valid(municipalities))) {
   municipalities <- municipalities %>% st_make_valid()
 }
 bxl_municipalities <- st_intersection(municipalities, bxl_region)
+# Select the polygons. The elements with an index greater than 19 are linestrings.
 bxl_municipalities_poly <- bxl_municipalities[1:19, ]
 ```
 
 Later however, I realized that it was also possible to compute a _negative buffer_ from a polygon, which may represent a more compact, if not "softer", option in this case, which I adopt.
 
 ```{r}
-neg_buffer <- st_buffer(bxl_region, -100)
+neg_buffer <- st_buffer(bxl_region, -100) # in meters
 bxl_municipalities_poly <- municipalities[neg_buffer, ]
 ```
 
@@ -217,6 +221,7 @@ bxl_municipalities_poly <- municipalities[neg_buffer, ]
 At this point we can make use of one of the two `bxl_municipalities_poly` objects that we computed, as they are identical.
 
 ```{r}
+# Drop the municipalities factors excluded from the latest subset operations, or they will appear in the legend.
 bxl_municipalities_poly <- bxl_municipalities_poly %>% mutate(name = droplevels(name))
 tm_shape(bxl_municipalities_poly) + tm_polygons(title = 'Municipalities', col = 'name') + tm_layout(legend.outside = TRUE)
 ```
