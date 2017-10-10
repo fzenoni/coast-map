@@ -1,17 +1,14 @@
 ---
-title: "A political map of the Brussels-Capital Region in R"
-subtitle: "A reproducible workflow"
-author: "Florian Zenoni"
-date: "October 9, 2017"
-output:
-  html_document:
-    code_folding: show
-    toc: yes
-    toc_float: 
-      collapsed: false
-      smooth_scroll: false
+title: Creating maps with R and OpenStreetMap
+author: Florian Zenoni
+date: '2017-10-10'
+categories:
+  - OpenStreetMap
+  - R
+tags:
+  - OpenStreetMap
+slug: creating-maps-with-r-and-openstreetmap
 ---
-
 
 ```{r, echo=FALSE}
 # CONFIG
