@@ -1,0 +1,161 @@
+---
+title: Creating maps with R and OpenStreetMap (2)
+author: Florian Zenoni
+date: '2017-10-24'
+categories:
+  - OpenStreetMap
+  - R
+tags:
+  - OpenStreetMap
+  - sf
+  - tmap
+  - osmdata
+slug: creating-maps-coastlines
+---
+
+```{r, echo=FALSE}
+# CONFIG
+user_name <- "fzenoni" # your Git username (only needed if
+# you want to deploy to GH pages)
+project_name <- "coast-map" # adapt!
+package_date <- "2017-10-24" # date of the CRAN snapshot that
+# the checkpoint package uses
+```
+
+### GitHub
+
+The code for the herein described process can also be freely downloaded from [https://github.com/`r user_name`/`r project_name`](https://github.com/`r user_name`/`r project_name`). 
+
+```{r include=FALSE}
+detach_all_packages <- function() {
+  basic_packages_blank <-  c("stats",
+                             "graphics",
+                             "grDevices",
+                             "utils",
+                             "datasets",
+                             "methods",
+                             "base")
+  basic_packages <- paste("package:", basic_packages_blank, sep = "")
+
+  package_list <- search()[
+    ifelse(unlist(gregexpr("package:", search())) == 1, TRUE, FALSE)]
+
+  package_list <- setdiff(package_list, basic_packages)
+
+  if (length(package_list) > 0)  for (package in package_list) {
+    detach(package, character.only = TRUE, unload = TRUE)
+    print(paste("package ", package, " detached", sep = ""))
+  }
+}
+
+detach_all_packages()
+
+# this allows multiple persons to use the same RMarkdown
+# without adjusting the working directory by themselves all the time
+source("scripts/csf.R")
+path_to_wd <- csf() # if this - for some reason - does not work, 
+# replace with a hardcoded path, like so: "~/projects/rddj-template/analysis/"
+if ( is.null(path_to_wd) | !dir.exists(path_to_wd)) {
+  print("WARNING: No working directory specified for current user")
+} else {
+  setwd(path_to_wd)
+}
+```
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+# from https://mran.revolutionanalytics.com/web/packages/checkpoint/vignettes/using-checkpoint-with-knitr.html
+# if you don't need a package, remove it from here (commenting is probably not sufficient)
+# tidyverse: see https://blog.rstudio.org/2016/09/15/tidyverse-1-0-0/
+cat("
+library(backports)
+library(dplyr)
+library(osmdata)
+library(sf)
+library(knitr)
+library(tmap)",
+file = "manifest.R")
+```
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+# if checkpoint is not yet installed, install it (for people using this
+# system for the first time)
+if (!require(checkpoint)) {
+  if (!require(devtools)) {
+    install.packages("devtools", repos = "http://cran.us.r-project.org")
+    require(devtools)
+  }
+  devtools::install_github("checkpoint",
+                           username = "RevolutionAnalytics",
+                           ref = "v0.3.2", # could be adapted later,
+                           # as of now (beginning of July 2017
+                           # this is the current release on CRAN)
+                           repos = "http://cran.us.r-project.org")
+  require(checkpoint)
+}
+# nolint start
+if (!dir.exists("~/.checkpoint")) {
+  dir.create("~/.checkpoint")
+}
+# nolint end
+# install packages for the specified CRAN snapshot date
+checkpoint(snapshotDate = package_date,
+           project = path_to_wd,
+           verbose = T,
+           scanForPackages = T,
+           use.knitr = F)
+rm(package_date)
+```
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+source("manifest.R")
+unlink("manifest.R")
+# sessionInfo()
+```
+
+## Where were we
+
+In the previous post (click [here](https://altran-data-analytics.netlify.com/2017/10/10/2017-10-10-creating-maps-with-r-and-openstreetmap/) if you missed it:), we managed to put together a relatively short chunk of code that generated the following rather nice map of Brussels Region, which includes all of its 19 municipalicities.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+boundaries <- opq(bbox = 'Brussels, Belgium') %>%
+  add_osm_feature(key = 'admin_level', value = '8') %>% 
+  osmdata_sf %>% unique_osmdata
+municipalities <- boundaries$osm_multipolygons
+regions <- opq(bbox = 'Brussels, Belgium') %>%
+  add_osm_feature(key = 'admin_level', value = '4') %>% 
+  osmdata_sf %>% unique_osmdata
+bxl_region <- regions$osm_multipolygons %>% filter(osm_id == '54094')
+
+municipalities <- st_transform(municipalities, 3812)
+bxl_region <- st_transform(bxl_region, 3812)
+# Fix the polygons before the intersection, or it will fail
+if(!all(st_is_valid(municipalities))) {
+  municipalities <- municipalities %>% st_make_valid()
+}
+
+neg_buffer <- st_buffer(bxl_region, -100) # in meters
+bxl_municipalities_poly <- municipalities[neg_buffer, ]
+
+# Drop the municipalities factors excluded from the latest subset operations
+# or they will appear in the legend.
+bxl_municipalities_poly <- bxl_municipalities_poly %>% mutate(name = droplevels(name))
+
+tm_style_col_blind() +
+  tm_shape(bxl_municipalities_poly) +
+  tm_polygons(title = 'Brussels Capital Municipalities', border.col = 'grey40', col = 'name', alpha = 0.6) +
+  tm_shape(bxl_region) + tm_borders(col = 'grey20', lwd = 2, alpha = 0.8) +
+  tm_layout(legend.outside = TRUE, frame.double.line = TRUE) +
+  tm_grid(projection = 'longlat', n.x = 5) + tm_scale_bar() +
+  tm_compass(position = c('right', 'top'))
+```
+
+In that post, we discussed how a certain amount of challenges were overcome. We picked Brussels, a city that lays in mainland. As a consequence, we did not have to worry about what stands _around_ Brussels, because it wouldn't have added much information to our map. But what if instead we decided to display another Belgian city such as Antwerp, well-known not only for its diamonds, but also for being a strategic access to the North Sea. Antwerp is not actually on the sea, but is connected through it thanks to the River Scheldt, which leads to the Westerschelde estuary. That is a lot of more geographical context, when compared to some other city just sitting in the Brabantian Plateau!
+
+```{r}
+boundaries <- opq(bbox = 'Antwerp, Belgium') %>%
+  add_osm_feature(key = 'admin_level', value = '8') %>% 
+  osmdata_sf %>% unique_osmdata
+
+tmap_mode('view')
+qtm(boundaries$osm_multipolygons)
+```
