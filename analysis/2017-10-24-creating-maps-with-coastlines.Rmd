@@ -1,7 +1,7 @@
 ---
 title: Creating maps with R and OpenStreetMap (2)
 author: Florian Zenoni
-date: '2017-10-24'
+date: '2017-11-07'
 categories:
   - OpenStreetMap
   - R
@@ -18,7 +18,7 @@ slug: creating-maps-coastlines
 user_name <- "fzenoni" # your Git username (only needed if
 # you want to deploy to GH pages)
 project_name <- "coast-map" # adapt!
-package_date <- "2017-10-24" # date of the CRAN snapshot that
+package_date <- "2017-11-07" # date of the CRAN snapshot that
 # the checkpoint package uses
 ```
 
@@ -29,19 +29,19 @@ The code for the herein described process can also be freely downloaded from [ht
 ```{r include=FALSE}
 detach_all_packages <- function() {
   basic_packages_blank <-  c("stats",
-                             "graphics",
-                             "grDevices",
-                             "utils",
-                             "datasets",
-                             "methods",
-                             "base")
+    "graphics",
+    "grDevices",
+    "utils",
+    "datasets",
+    "methods",
+    "base")
   basic_packages <- paste("package:", basic_packages_blank, sep = "")
-
+  
   package_list <- search()[
     ifelse(unlist(gregexpr("package:", search())) == 1, TRUE, FALSE)]
-
+  
   package_list <- setdiff(package_list, basic_packages)
-
+  
   if (length(package_list) > 0)  for (package in package_list) {
     detach(package, character.only = TRUE, unload = TRUE)
     print(paste("package ", package, " detached", sep = ""))
@@ -73,7 +73,7 @@ library(osmdata)
 library(sf)
 library(knitr)
 library(tmap)",
-file = "manifest.R")
+  file = "manifest.R")
 ```
 
 ```{r message=FALSE, warning=FALSE, include=FALSE}
@@ -85,11 +85,11 @@ if (!require(checkpoint)) {
     require(devtools)
   }
   devtools::install_github("checkpoint",
-                           username = "RevolutionAnalytics",
-                           ref = "v0.3.2", # could be adapted later,
-                           # as of now (beginning of July 2017
-                           # this is the current release on CRAN)
-                           repos = "http://cran.us.r-project.org")
+    username = "RevolutionAnalytics",
+    ref = "v0.3.2", # could be adapted later,
+    # as of now (beginning of July 2017
+    # this is the current release on CRAN)
+    repos = "http://cran.us.r-project.org")
   require(checkpoint)
 }
 # nolint start
@@ -99,10 +99,10 @@ if (!dir.exists("~/.checkpoint")) {
 # nolint end
 # install packages for the specified CRAN snapshot date
 checkpoint(snapshotDate = package_date,
-           project = path_to_wd,
-           verbose = T,
-           scanForPackages = T,
-           use.knitr = F)
+  project = path_to_wd,
+  verbose = T,
+  scanForPackages = T,
+  use.knitr = F)
 rm(package_date)
 ```
 
@@ -114,9 +114,9 @@ unlink("manifest.R")
 
 ## Where were we
 
-In the previous post (click [here](https://altran-data-analytics.netlify.com/2017/10/10/2017-10-10-creating-maps-with-r-and-openstreetmap/) if you missed it:), we managed to put together a relatively short chunk of code that generated the following rather nice map of Brussels Region, which includes all of its 19 municipalicities.
+In the previous post (click [here](https://altran-data-analytics.netlify.com/2017/10/10/2017-10-10-creating-maps-with-r-and-openstreetmap/) if you missed it), we managed to put together a relatively short chunk of code that generated the following rather nice map of Brussels Region, which includes all of its 19 municipalities.
 
-```{r echo=FALSE, message=FALSE, warning=FALSE}
+```{r eval=FALSE, message=FALSE, warning=FALSE, include=FALSE}
 boundaries <- opq(bbox = 'Brussels, Belgium') %>%
   add_osm_feature(key = 'admin_level', value = '8') %>% 
   osmdata_sf %>% unique_osmdata
@@ -149,13 +149,94 @@ tm_style_col_blind() +
   tm_compass(position = c('right', 'top'))
 ```
 
-In that post, we discussed how a certain amount of challenges were overcome. We picked Brussels, a city that lays in mainland. As a consequence, we did not have to worry about what stands _around_ Brussels, because it wouldn't have added much information to our map. But what if instead we decided to display another Belgian city such as Antwerp, well-known not only for its diamonds, but also for being a strategic access to the North Sea. Antwerp is not actually on the sea, but is connected through it thanks to the River Scheldt, which leads to the Westerschelde estuary. That is a lot of more geographical context, when compared to some other city just sitting in the Brabantian Plateau!
+In that post, we discussed how a certain amount of challenges were overcome. We picked Brussels, a city that lays in mainland. As a consequence, we did not have to worry about what stands _around_ Brussels, because it wouldn't have added much information to our map. But what if instead we decided to display a city on the coast? Let's choose a warmer place, such as Bilbao, Spain! Besides the presence of the sea, this choice will give us the chance check how to visualize the Bilbao estuary, and possibly the flowing river.
+
+I should specify that `tmap` gives you the chance to superimpose your queries to the OpenStreetMap map tiles, by creating an interactive HTML widget. This could be the shortest possible answer to display the region of interest in its geographical context. To showcase this let's begin once again by the fundamentals. We are going to query the administrative level 7, corresponding the the _comarca_ of Greater Bilbao (some sort of county).
 
 ```{r}
-boundaries <- opq(bbox = 'Antwerp, Belgium') %>%
-  add_osm_feature(key = 'admin_level', value = '8') %>% 
+boundaries <- opq(bbox = 'Bilbao, Spain') %>%
+  add_osm_feature(key = 'admin_level', value = '7') %>% 
   osmdata_sf %>% unique_osmdata
+```
 
+Now let's activate the "view" option (the default being "plot"), and let's display the single region we queried.
+
+```{r message=FALSE}
 tmap_mode('view')
 qtm(boundaries$osm_multipolygons)
+# Reset to default
+tmap_mode('plot')
+```
+
+Cool. But certainly boring.
+
+We know how to query boundaries with `osmdata`; nothing stops us from querying a coastline.
+But first, I will define a slightly larger bounding box, so that later we'll have some margin of adjustement.
+
+```{r}
+bb <- st_bbox(boundaries$osm_multipolygons)
+# Defining a buffer
+buffer <- 0.1
+p_big <- rbind(c(bb[1] - buffer, bb[2] - buffer),
+  c(bb[1] - buffer, bb[4] + buffer),
+  c(bb[3] + buffer, bb[4] + buffer),
+  c(bb[3] + buffer, bb[2] - buffer),
+  c(bb[1] - buffer, bb[2] - buffer))
+# Putting the coordinates into a formal square
+pol <- st_polygon(list(p_big)) %>% st_geometry
+st_crs(pol) <- 4326
+```
+
+The correct `key` and `value` to obtain the coastline are `natural` and `coastline` (check the [wiki page](http://wiki.openstreetmap.org/wiki/Tag:natural%3Dcoastline) for more details).
+
+```{r}
+coast <- opq(bbox = st_bbox(pol)) %>%
+  add_osm_feature(key = 'natural', value = 'coastline') %>%
+  osmdata_sf %>% unique_osmdata
+
+qtm(coast$osm_lines)
+```
+
+Interesting already! We got Bilbao's coastline, some tiny islands here and there, as well as the estuary.
+We can quickly superimpose what we have.
+
+```{r}
+qtm(boundaries$osm_multipolygons) + qtm(coast$osm_lines)
+```
+
+Is there more to it? Can we see the rest of the river?
+I am going to query any OSM object carrying the key "waterway".
+
+```{r}
+water <- opq(bbox = st_bbox(pol)) %>%
+  add_osm_feature(key = 'waterway') %>%
+  osmdata_sf %>% unique_osmdata
+```
+
+After a quick inspection, it seems that the watercourses are represented as polygons. Let's add them to the rest.
+
+```{r}
+qtm(boundaries$osm_multipolygons) + qtm(coast$osm_lines) + qtm(water$osm_polygons)
+```
+
+It is a very rough visualization, but all the elements are here.
+
+Now, apart from some fine tuning, no map of a coastal city would be complete without appropriate colors for sea and land. If land (and islands) and sea were univoquely represented by polygons, this would be an easy task. Instead, all we have, at least for the coastline, is a line. The strategy would then be to cut the polygon frame in two parts, according to the coast, acting as a "blade". Luckily for us, the `sf` package includes many of the functions usually available in PostGIS. This time, 
+
+```{r}
+blade <- coast$osm_lines %>% st_union %>% st_line_merge
+multipol <- st_split(st_geometry(pol), st_geometry(blade))
+
+land <- st_cast(multipol[[1]], 'POLYGON') %>% st_geometry %>% st_sf
+st_crs(land) <- 4326
+
+sea <- st_difference(pol, land) %>% st_geometry %>% st_sf
+st_crs(sea) <- 4326
+
+tm_shape(land) + tm_polygons(col = 'bisque3') +
+  tm_shape(boundaries$osm_multipolygons, is.master = T) + tm_polygons() +
+  tm_shape(sea) + tm_polygons(col = 'skyblue') +
+  tm_shape(water$osm_polygons) + tm_polygons(col = 'skyblue')
+
+# qtm(st_geometry(land), col = 'bisque3') + qtm(st_geometry(sea)) + qtm(boundaries$osm_multipolygons, is.master = T)
 ```
