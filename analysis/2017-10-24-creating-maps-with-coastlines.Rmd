@@ -116,7 +116,7 @@ unlink("manifest.R")
 
 In the previous post (click [here](https://altran-data-analytics.netlify.com/2017/10/10/2017-10-10-creating-maps-with-r-and-openstreetmap/) if you missed it), we managed to put together a relatively short chunk of code that generated the following rather nice map of Brussels Region, which includes all of its 19 municipalities.
 
-```{r eval=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+```{r message=FALSE, warning=FALSE}
 boundaries <- opq(bbox = 'Brussels, Belgium') %>%
   add_osm_feature(key = 'admin_level', value = '8') %>% 
   osmdata_sf %>% unique_osmdata
@@ -130,7 +130,7 @@ municipalities <- st_transform(municipalities, 3812)
 bxl_region <- st_transform(bxl_region, 3812)
 # Fix the polygons before the intersection, or it will fail
 if(!all(st_is_valid(municipalities))) {
-  municipalities <- municipalities %>% st_make_valid()
+  municipalities <- municipalities %>% st_make_valid
 }
 
 neg_buffer <- st_buffer(bxl_region, -100) # in meters
@@ -149,9 +149,9 @@ tm_style_col_blind() +
   tm_compass(position = c('right', 'top'))
 ```
 
-In that post, we discussed how a certain amount of challenges were overcome. We picked Brussels, a city that lays in mainland. As a consequence, we did not have to worry about what stands _around_ Brussels, because it wouldn't have added much information to our map. But what if instead we decided to display a city on the coast? Let's choose a warmer place, such as Bilbao, Spain! Besides the presence of the sea, this choice will give us the chance check how to visualize the Bilbao estuary, and possibly the flowing river.
+In that post, we discussed how a certain amount of challenges were overcome. We picked Brussels, a city that lays in mainland. As a consequence, we did not have to worry about what stands _around_ Brussels, because it wouldn't have added much information to our map. But what if instead we decided to display a city on the coast? For this purpose, let's choose a warmer place, such as Bilbao, Spain! Besides the presence of the sea, this choice will give us the chance check how to visualize Bilbao's estuary, and also possibly the flowing river.
 
-I should specify that `tmap` gives you the chance to superimpose your queries to the OpenStreetMap map tiles, by creating an interactive HTML widget. This could be the shortest possible answer to display the region of interest in its geographical context. To showcase this let's begin once again by the fundamentals. We are going to query the administrative level 7, corresponding the the _comarca_ of Greater Bilbao (some sort of county).
+At this stage I should specify that `tmap` gives you the chance to superimpose your queries to the OpenStreetMap map tiles, by creating an interactive HTML widget. This could be the shortest possible answer to display the region of interest in its geographical context. To showcase this let's begin once again by the fundamentals. We are going to query the administrative level 7, corresponding the the _comarca_ of Greater Bilbao (some sort of Spanish county equivalent).
 
 ```{r}
 boundaries <- opq(bbox = 'Bilbao, Spain') %>%
@@ -164,14 +164,14 @@ Now let's activate the "view" option (the default being "plot"), and let's displ
 ```{r message=FALSE}
 tmap_mode('view')
 qtm(boundaries$osm_multipolygons)
-# Reset to default
+# Reset to default for next steps
 tmap_mode('plot')
 ```
 
-Cool. But certainly boring.
+It's a cool solution when building websites or interactive presentations. But it's not optimal when a map needs to be printed and the programmer wants to highlight specific aspects of the map.
 
 We know how to query boundaries with `osmdata`; nothing stops us from querying a coastline.
-But first, I will define a slightly larger bounding box, so that later we'll have some margin of adjustement.
+But first, I will define a slightly larger bounding box, so that we are mathematically sure that our boundaries and their surroundings will be correctly displayed.
 
 ```{r}
 bb <- st_bbox(boundaries$osm_multipolygons)
@@ -182,8 +182,9 @@ p_big <- rbind(c(bb[1] - buffer, bb[2] - buffer),
   c(bb[3] + buffer, bb[4] + buffer),
   c(bb[3] + buffer, bb[2] - buffer),
   c(bb[1] - buffer, bb[2] - buffer))
-# Putting the coordinates into a formal square
+# Putting the coordinates into a squared polygon object
 pol <- st_polygon(list(p_big)) %>% st_geometry
+# Providing the SRID (here, unprojected lon/lat)
 st_crs(pol) <- 4326
 ```
 
@@ -204,8 +205,7 @@ We can quickly superimpose what we have.
 qtm(boundaries$osm_multipolygons) + qtm(coast$osm_lines)
 ```
 
-Is there more to it? Can we see the rest of the river?
-I am going to query any OSM object carrying the key "waterway".
+Is there more to it? Can we see the rest of the river? To find out, I am going to query any OSM object carrying the key "waterway".
 
 ```{r}
 water <- opq(bbox = st_bbox(pol)) %>%
@@ -219,24 +219,46 @@ After a quick inspection, it seems that the watercourses are represented as poly
 qtm(boundaries$osm_multipolygons) + qtm(coast$osm_lines) + qtm(water$osm_polygons)
 ```
 
-It is a very rough visualization, but all the elements are here.
+It is a very rough visualization, but as one can guess, almost all the elements are here.
 
-Now, apart from some fine tuning, no map of a coastal city would be complete without appropriate colors for sea and land. If land (and islands) and sea were univoquely represented by polygons, this would be an easy task. Instead, all we have, at least for the coastline, is a line. The strategy would then be to cut the polygon frame in two parts, according to the coast, acting as a "blade". Luckily for us, the `sf` package includes many of the functions usually available in PostGIS. This time, 
+Now, no map of a coastal city would be complete without appropriate colors for sea and land. If land and sea were univoquely represented by polygons, this would be an easy task. Instead, all we have, at least for the coastline, is a `data.frame` of `LINESTRING` objects. The strategy would then be to cut the polygon frame in two parts, according to the coast acting as a "blade". Luckily for us, the `sf` package includes many of the functions available in PostGIS technology. This time, it's the time for `st_split` to shine.
+
+_N.B.: Things did not exactly go as expected for this blog post. I still pay the price for some lack of experience. In the following lines, if you know a better solution, or understand what is going wrong, don't hesitate to write in the comments!_
+
+First, we define the blade by taking the coastline, making a union of all the `data.frame` rows, thus obtaining a `MULTILINESTRING`. Since after inspection, that object is truly a single string, we use the appropriate function to merge everything. This is very important, because `st_split` does not support cutting a polygon with a multilinestring (as reported in the PostGIS [doc](https://postgis.net/docs/ST_Split.html)).
 
 ```{r}
 blade <- coast$osm_lines %>% st_union %>% st_line_merge
-multipol <- st_split(st_geometry(pol), st_geometry(blade))
+```
 
+We use this `blade` to cut the squared polygon we defined earlier.
+
+```{r}
+multipol <- st_split(st_geometry(pol), st_geometry(blade))
+```
+
+The result is a `GEOMETRYCOLLECTION`. In principle, one could access the different elements of the collection (in this case, two) by using double square brackets. For a reason I could not understand, in this case it works only for the first element, which I then cast appropriately.
+
+```{r}
 land <- st_cast(multipol[[1]], 'POLYGON') %>% st_geometry %>% st_sf
 st_crs(land) <- 4326
+```
 
+This is why, instead of calling the second polygon with `multipol[[2]]`, I am forced to make a different kind of operation. Looking at the bright side, this is yet another display of possible `sf` geometrical operations.
+
+```{r}
 sea <- st_difference(pol, land) %>% st_geometry %>% st_sf
 st_crs(sea) <- 4326
+```
 
-tm_shape(land) + tm_polygons(col = 'bisque3') +
+We are now ready to display everything, similarly to what was done in the last post. Note the `is.master = T` activated option, which calibrates the borders of the final picture according to Bilbao's boundaries, instead of the polygon called first (in this case, `land`).
+
+```{r}
+tm_shape(land) + tm_polygons(col = 'bisque3', alpha = 0.8) +
   tm_shape(boundaries$osm_multipolygons, is.master = T) + tm_polygons() +
-  tm_shape(sea) + tm_polygons(col = 'skyblue') +
-  tm_shape(water$osm_polygons) + tm_polygons(col = 'skyblue')
-
-# qtm(st_geometry(land), col = 'bisque3') + qtm(st_geometry(sea)) + qtm(boundaries$osm_multipolygons, is.master = T)
+  tm_shape(sea) + tm_polygons(col = 'skyblue', alpha = 0.8) +
+  tm_shape(water$osm_polygons) + tm_polygons(col = 'skyblue', alpha = 0.8) +
+  tm_grid(n.x = 5, projection = "longlat") +
+  tm_layout(legend.outside = TRUE, title = 'Bilbao, Spain', frame.double.line = TRUE) +
+  tm_scale_bar() + tm_compass(position = c('right', 'top'))
 ```
