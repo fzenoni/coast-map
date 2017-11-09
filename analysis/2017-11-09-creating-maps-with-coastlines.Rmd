@@ -1,7 +1,7 @@
 ---
 title: Creating maps with R and OpenStreetMap (2)
 author: Florian Zenoni
-date: '2017-11-07'
+date: '2017-11-09'
 categories:
   - OpenStreetMap
   - R
