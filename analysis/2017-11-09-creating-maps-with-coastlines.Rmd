@@ -29,12 +29,12 @@ The code for the herein described process can also be freely downloaded from [ht
 ```{r include=FALSE}
 detach_all_packages <- function() {
   basic_packages_blank <-  c("stats",
-                             "graphics",
-                             "grDevices",
-                             "utils",
-                             "datasets",
-                             "methods",
-                             "base")
+    "graphics",
+    "grDevices",
+    "utils",
+    "datasets",
+    "methods",
+    "base")
   basic_packages <- paste("package:", basic_packages_blank, sep = "")
   
   package_list <- search()[
@@ -66,14 +66,24 @@ if ( is.null(path_to_wd) | !dir.exists(path_to_wd)) {
 # from https://mran.revolutionanalytics.com/web/packages/checkpoint/vignettes/using-checkpoint-with-knitr.html
 # if you don't need a package, remove it from here (commenting is probably not sufficient)
 # tidyverse: see https://blog.rstudio.org/2016/09/15/tidyverse-1-0-0/
-cat("
-library(backports)
+if(Sys.info()['sysname'] == 'Windows') {
+  cat("
+library(dplyr)
+library(osmdata)
+library(sf)
+library(knitr)
+library(tmap)
+library(lwgeom)",
+    file = "manifest.R")
+} else {
+  cat("
 library(dplyr)
 library(osmdata)
 library(sf)
 library(knitr)
 library(tmap)",
-file = "manifest.R")
+    file = "manifest.R")
+}
 ```
 
 ```{r message=FALSE, warning=FALSE, include=FALSE}
@@ -85,11 +95,11 @@ if (!require(checkpoint)) {
     require(devtools)
   }
   devtools::install_github("checkpoint",
-                           username = "RevolutionAnalytics",
-                           ref = "v0.3.2", # could be adapted later,
-                           # as of now (beginning of July 2017
-                           # this is the current release on CRAN)
-                           repos = "http://cran.us.r-project.org")
+    username = "RevolutionAnalytics",
+    ref = "v0.3.2", # could be adapted later,
+    # as of now (beginning of July 2017
+    # this is the current release on CRAN)
+    repos = "http://cran.us.r-project.org")
   require(checkpoint)
 }
 # nolint start
@@ -99,28 +109,16 @@ if (!dir.exists("~/.checkpoint")) {
 # nolint end
 # install packages for the specified CRAN snapshot date
 checkpoint(snapshotDate = package_date,
-           project = path_to_wd,
-           verbose = T,
-           scanForPackages = T,
-           use.knitr = F)
+  project = path_to_wd,
+  verbose = T,
+  scanForPackages = T,
+  use.knitr = F)
 rm(package_date)
 ```
 
 ```{r message=FALSE, warning=FALSE, include=FALSE}
 source("manifest.R")
 unlink("manifest.R")
-
-if(Sys.info()['sysname'] == 'Windows') { 
-  if(!require(lwgeom)) {
-    if(!require(devtools)) {
-      install.packages("devtools", repos = "http://cran.us.r-project.org")
-      require(devtools)
-    }
-    devtools::install_github('r-spatial/lwgeom')
-    require(lwgeom)
-  }
-}
-# sessionInfo()
 ```
 
 ### Where were we
@@ -141,7 +139,7 @@ municipalities <- st_transform(municipalities, 3812)
 bxl_region <- st_transform(bxl_region, 3812)
 # Fix the polygons before the intersection, or it will fail
 if(!all(st_is_valid(municipalities))) {
-    municipalities <- municipalities %>% st_make_valid()
+  municipalities <- municipalities %>% st_make_valid()
 }
 
 neg_buffer <- st_buffer(bxl_region, -100) # in meters
@@ -200,10 +198,10 @@ bb <- st_bbox(boundaries$osm_multipolygons)
 # Defining a buffer
 buffer <- 0.1
 p_big <- rbind(c(bb[1] - buffer, bb[2] - buffer),
-               c(bb[1] - buffer, bb[4] + buffer),
-               c(bb[3] + buffer, bb[4] + buffer),
-               c(bb[3] + buffer, bb[2] - buffer),
-               c(bb[1] - buffer, bb[2] - buffer))
+  c(bb[1] - buffer, bb[4] + buffer),
+  c(bb[3] + buffer, bb[4] + buffer),
+  c(bb[3] + buffer, bb[2] - buffer),
+  c(bb[1] - buffer, bb[2] - buffer))
 # Putting the coordinates into a squared polygon object
 pol <- st_polygon(list(p_big)) %>% st_geometry
 # Providing the SRID (here, unprojected lon/lat)
@@ -256,7 +254,7 @@ blade <- coast$osm_lines %>% st_union %>% st_line_merge
 We use this `blade` to cut the squared polygon we defined earlier.
 
 ```{r}
-  multipol <- st_split(st_geometry(pol), st_geometry(blade))
+multipol <- st_split(st_geometry(pol), st_geometry(blade))
 ```
 
 The result is a `GEOMETRYCOLLECTION`. In principle, one could access the different elements of the collection (in this case, two) by using double square brackets. For a reason I could not understand, in this case it works only for the first element, which I then cast appropriately.
