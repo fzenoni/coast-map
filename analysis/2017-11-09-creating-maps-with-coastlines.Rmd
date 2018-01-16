@@ -18,7 +18,7 @@ slug: creating-maps-coastlines
 user_name <- "fzenoni" # your Git username (only needed if
 # you want to deploy to GH pages)
 project_name <- "coast-map" # adapt!
-package_date <- "2018-01-10" # date of the CRAN snapshot that
+package_date <- "2017-11-09" # date of the CRAN snapshot that
 # the checkpoint package uses
 ```
 
@@ -71,7 +71,6 @@ if(Sys.info()['sysname'] == 'Windows') {
 library(dplyr)
 library(osmdata)
 library(ggplot2)
-library(knitr)
 library(sf)
 library(tmap)
 library(lwgeom)",
@@ -80,11 +79,9 @@ library(lwgeom)",
   cat("
 library(dplyr)
 library(ggplot2)
-library(knitr)
 library(osmdata)
 library(sf)
-library(tmap)
-library(lwgeom)",
+library(tmap)",
     file = "manifest.R")
 }
 ```
