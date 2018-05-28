@@ -18,7 +18,7 @@ slug: creating-maps-coastlines
 user_name <- "fzenoni" # your Git username (only needed if
 # you want to deploy to GH pages)
 project_name <- "coast-map" # adapt!
-package_date <- "2017-11-09" # date of the CRAN snapshot that
+package_date <- "2018-05-22" # date of the CRAN snapshot that
 # the checkpoint package uses
 ```
 
@@ -66,8 +66,7 @@ if ( is.null(path_to_wd) | !dir.exists(path_to_wd)) {
 # from https://mran.revolutionanalytics.com/web/packages/checkpoint/vignettes/using-checkpoint-with-knitr.html
 # if you don't need a package, remove it from here (commenting is probably not sufficient)
 # tidyverse: see https://blog.rstudio.org/2016/09/15/tidyverse-1-0-0/
-if(Sys.info()['sysname'] == 'Windows') {
-  cat("
+cat("
 library(dplyr)
 library(osmdata)
 library(ggplot2)
@@ -75,15 +74,6 @@ library(sf)
 library(tmap)
 library(lwgeom)",
     file = "manifest.R")
-} else {
-  cat("
-library(dplyr)
-library(ggplot2)
-library(osmdata)
-library(sf)
-library(tmap)",
-    file = "manifest.R")
-}
 ```
 
 ```{r message=FALSE, warning=FALSE, include=FALSE}
@@ -174,11 +164,11 @@ boundaries <- opq(bbox = 'Bilbao, Spain') %>%
   osmdata_sf %>% unique_osmdata
 ```
 
-Now let's activate the "view" option (the default being "plot"), and let's display the single region we queried.
+Now let's activate the "view" option (the default being "plot"), and let's display the region we queried.
 
 ```{r message=FALSE}
 tmap_mode('view')
-qtm(boundaries$osm_multipolygons)
+qtm(boundaries$osm_multipolygons[5,])
 ```
 
 It's a cool solution when building websites or interactive presentations. But it's not optimal when a map needs to be printed and the programmer wants to highlight specific aspects of the map.
@@ -194,7 +184,7 @@ We know how to query boundaries with `osmdata`; nothing stops us from querying a
 But first, I will define a slightly larger bounding box, so that we are mathematically sure that our boundaries, as well as their land and see surroundings will be correctly displayed in the final picture.
 
 ```{r}
-bb <- st_bbox(boundaries$osm_multipolygons)
+bb <- st_bbox(boundaries$osm_multipolygons[5,])
 # Defining a buffer
 buffer <- 0.1
 p_big <- rbind(c(bb[1] - buffer, bb[2] - buffer),
@@ -222,7 +212,7 @@ Interesting already! We got Bilbao's coastline as well as the estuary.
 We can quickly superimpose what we have.
 
 ```{r}
-qtm(boundaries$osm_multipolygons) + qtm(coast$osm_lines)
+qtm(boundaries$osm_multipolygons[5,]) + qtm(coast$osm_lines)
 ```
 
 Is there more to it? Can we see the rest of the river? To find out, I am going to query any OSM object carrying the key `waterway`.
@@ -236,7 +226,7 @@ water <- opq(bbox = st_bbox(pol)) %>%
 After a quick inspection, it seems that the watercourses are represented as polygons. Let's add them to the rest.
 
 ```{r}
-qtm(boundaries$osm_multipolygons) + qtm(coast$osm_lines) + qtm(water$osm_polygons)
+qtm(boundaries$osm_multipolygons[5,]) + qtm(coast$osm_lines) + qtm(water$osm_polygons)
 ```
 
 It is a very rough visualization, but as one can guess, almost all the elements are here.
@@ -275,7 +265,7 @@ We are now ready to display everything, similarly to what was done in the last p
 
 ```{r}
 tm_shape(land) + tm_polygons(col = 'bisque3', alpha = 0.8) +
-  tm_shape(boundaries$osm_multipolygons, is.master = T) + tm_polygons() +
+  tm_shape(boundaries$osm_multipolygons[5,], is.master = T) + tm_polygons() +
   tm_shape(sea) + tm_polygons(col = 'skyblue', alpha = 0.8) +
   tm_shape(water$osm_polygons) + tm_polygons(col = 'skyblue', alpha = 0.8) +
   tm_grid(n.x = 5, projection = "longlat") +
